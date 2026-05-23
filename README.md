@@ -17,6 +17,10 @@ skills/cheap-second-opinion/
     └── cheap_opinion/
 ```
 
+最小限の運用ガイドは
+[`_docs/guide/cheap-second-opinion-usage.md`](_docs/guide/cheap-second-opinion-usage.md)
+にあります。
+
 ## Commands
 
 ```bash

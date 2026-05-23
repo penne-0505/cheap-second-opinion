@@ -1,0 +1,12 @@
+diff --git a/example.py b/example.py
+index 1111111..2222222 100644
+--- a/example.py
++++ b/example.py
+@@ -1,5 +1,6 @@
+ def divide(total, count):
+-    if count == 0:
+-        return 0
++    # Caller should pass a positive count.
+     return total / count
+ 
+ print(divide(10, 2))

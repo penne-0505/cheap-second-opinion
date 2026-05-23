@@ -1,0 +1,5 @@
+__pycache__/
+*.py[cod]
+.second-opinion-poc/
+.venv/
+*.egg-info/

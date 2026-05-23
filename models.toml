@@ -1,0 +1,27 @@
+[defaults]
+model = "qwen-coder"
+base_url = "https://openrouter.ai/api/v1"
+temperature = 0.1
+max_tokens = 3000
+timeout_seconds = 120
+
+[models.qwen-coder]
+provider = "openrouter"
+model = "qwen/qwen3-coder"
+description = "Code review / implementation reasoning. Edit this id if OpenRouter changes naming."
+
+[models.deepseek]
+provider = "openrouter"
+model = "deepseek/deepseek-chat"
+description = "General reasoning and bug hypotheses."
+
+[models.kimi]
+provider = "openrouter"
+model = "moonshotai/kimi-k2"
+description = "Long-context design and documentation review."
+
+[models.glm]
+provider = "openrouter"
+model = "z-ai/glm-4.5"
+description = "Cheap broad second-opinion pass."
+

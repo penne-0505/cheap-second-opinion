@@ -1,76 +1,112 @@
-# Documentation Driven Development Template
+# cheap-second-opinion
 
-> This README is available in English and Japanese. English speakers, please scroll down.
+OpenRouter-hosted modelsを、Codexの外部セカンドオピニオンとして呼ぶPoCです。
 
-## 概要
+意図的に「native subagent」ではなく、非対話CLIをCodex skillからwrapする構成にしています。外部モデルには編集権限を渡さず、reviewや意見出しの結果だけを親agentが検証します。
 
-このリポジトリは私が常用しているドキュメント駆動開発 *(Documentation Driven Development)* のテンプレートです。
+## Skill Layout
 
-開発サイクルはドキュメントと [TODO.md](TODO.md) によって構成されています。
+Codex skillとしての配布単位は `skills/cheap-second-opinion/` です。Python CLIとデフォルトの `models.toml` はskillフォルダ内に同梱しているため、このフォルダだけをコピーしても動く構成です。
 
-人がサイクルを回すことも出来ますが、基本的には**Claude Codeなどのコーディングエージェント**が、この規則に従って自律的な開発を行うために設計されました。
+```text
+skills/cheap-second-opinion/
+├── SKILL.md
+├── models.toml
+└── scripts/
+    ├── cheap-opinion
+    └── cheap_opinion/
+```
 
-**詳細については [ガイドライン](_docs/documentation_guide.md) を参照してください。**
+## Commands
 
-## 使用方法
+```bash
+SKILL_DIR="$(pwd)/skills/cheap-second-opinion"
 
-1. このリポジトリをフォークまたはクローンします。
-2. プロジェクトに合わせてドキュメントと設定ファイルを編集します。
-3. 開発を開始します。
+"$SKILL_DIR/scripts/cheap-opinion" models
+"$SKILL_DIR/scripts/cheap-opinion" review --model qwen-coder --format json
+"$SKILL_DIR/scripts/cheap-opinion" ask --model kimi --file src/foo.ts "この設計の穴を見て"
+"$SKILL_DIR/scripts/cheap-opinion" multi review --models qwen-coder,deepseek,kimi --format markdown
+"$SKILL_DIR/scripts/cheap-opinion" multi ask --models qwen-coder,deepseek,kimi --template risk "この方針を再検討して"
+"$SKILL_DIR/scripts/cheap-opinion" logging status
+"$SKILL_DIR/scripts/cheap-opinion" logging enable
+"$SKILL_DIR/scripts/cheap-opinion" logging disable
+```
 
-### カスタマイズ
+repo内で開発用packageとして実行する場合:
 
-使用に当たっては、以下のファイルをプロジェクトに合わせてカスタマイズしてください。
+```bash
+cd /path/to/cheap-second-opinion
+PYTHONPATH=src python -m cheap_opinion models
+PYTHONPATH=src python -m cheap_opinion review --model deepseek --format markdown
+```
 
-#### AGENTS.md
+editable installする場合:
 
-変更の推奨事項はありませんが、特定コマンドの使用指示が含まれているので、必要に応じて編集してください。
+```bash
+cd /path/to/cheap-second-opinion
+python -m pip install -e .
+cheap-opinion review --model deepseek --format markdown
+```
 
-#### README.md
+複数モデルで同じ問いを並列実行する場合:
 
-このREADME自体も、プロジェクトに合わせて編集してください。
+```bash
+cheap-opinion multi review --models qwen-coder,deepseek,kimi --format json
+cheap-opinion multi ask --models qwen-coder,kimi --template design "この設計判断の代替案は？"
+```
 
-#### LICENSE.txt
+`multi` は合議や多数決ではなく、複数の独立した視点を集めるためのモードです。1つのモデルが失敗しても他の結果は返します。全モデルが失敗した場合だけ終了コード `1` になります。
 
-[LICENSE](LICENSE.txt)についても、特に著作者の表示を編集してください。
+APIキーは環境変数で渡します。
 
-## ライセンス
+```bash
+export OPENROUTER_API_KEY="..."
+```
 
-このリポジトリは [MITライセンス](LICENSE.txt) の下でライセンスされています。
+## Model Aliases
 
----
+`skills/cheap-second-opinion/models.toml`で短いaliasをOpenRouter model idへ割り当てます。model idはOpenRouter側で変わることがあるので、PoCでは編集しやすさを優先しています。
 
-## Summary
+```toml
+[models.qwen-coder]
+provider = "openrouter"
+model = "qwen/qwen3-coder"
+```
 
-This repository is a template for Documentation Driven Development that I commonly use.
+別の設定を使う場合は、`--models-file` か `CHEAP_OPINION_MODELS_TOML` で上書きできます。
 
-The development cycle is structured around documentation and [TODO.md](TODO.md).
+## Logging
 
-While humans can run the cycle, it is primarily designed **for coding agents like Claude Code** to autonomously develop according to these rules.
+ログはデフォルト無効です。対象repoのgit rootに `.second-opinion-poc/state.toml` が作られ、enable時だけ `.second-opinion-poc/logs/*.json` へ保存します。`review --repo /path/to/repo` はそのrepoのgit rootを使います。
 
-**For more details, please refer to the [Guidelines](_docs/documentation_guide.md).**
+```bash
+"$SKILL_DIR/scripts/cheap-opinion" logging enable
+"$SKILL_DIR/scripts/cheap-opinion" review --model qwen-coder
+"$SKILL_DIR/scripts/cheap-opinion" logging --repo /path/to/repo enable
+"$SKILL_DIR/scripts/cheap-opinion" review --repo /path/to/repo --model qwen-coder
+"$SKILL_DIR/scripts/cheap-opinion" logging disable
+```
 
-## Usage
+ログにはprompt/responseが入るため、機密repoでは必要なときだけ有効化してください。
 
-1. Fork or clone this repository.
-2. Edit the documentation and configuration files to suit your project.
-3. Start development.
+`multi` 実行時は複数モデル分のprompt/responseが1つの集約ログに入ります。ログ量と機密露出が増えるため、通常より慎重に扱ってください。
 
-### Customization
+## Review Prompt
 
-When using this template, please customize the following files to fit your project.
+`review`はOpenAI Codex CLI OSSの `codex-rs/core/review_prompt.md` を参照し、PoC向けに再構成したpromptを使います。
 
-#### AGENTS.md
+元promptの要点:
 
-No specific changes are recommended here, but feel free to edit it as needed, especially if you want to suggest the use of certain commands.
+- P0-P3の優先度
+- diff上の短い位置指定
+- discreteでactionableなbugだけを報告
+- JSON schemaで出力
+- patch生成はしない
 
-#### README.md
+全文コピーではなく、同じレビュー思想をこのPoC向けに短く実装しています。
 
-Feel free to edit this README itself to suit your project.
+Source: https://github.com/openai/codex/blob/main/codex-rs/core/review_prompt.md
 
-#### LICENSE.txt
+## Skill Wrapper
 
-Please edit the [LICENSE](LICENSE.txt) file, particularly the author attribution.
-
-## License
-This repository is licensed under the [MIT License](LICENSE.txt).
+Codex skill wrapperは `skills/cheap-second-opinion/SKILL.md` にあります。skill内の `scripts/cheap-opinion` が同梱CLIを起動します。

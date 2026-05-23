@@ -1,3 +1,16 @@
+---
+title: Documentation Guide
+status: active
+draft_status: n/a
+created_at: "2026-05-23"
+updated_at: "2026-05-23"
+references:
+  - _docs/standards/documentation_guidelines.md
+  - _docs/standards/documentation_operations.md
+related_issues: []
+related_prs: []
+---
+
 # Documentation Guide
 
 **必読:** ドキュメントのアーカイブ運用フローに関する最新ルールは、常に `_docs/standards/documentation_operations.md` を参照して遵守してください。

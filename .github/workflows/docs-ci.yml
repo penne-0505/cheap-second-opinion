@@ -19,6 +19,8 @@ jobs:
           globs: |
             _docs/**/*.md
             !_docs/archives/**/*
+            !_docs/standards/**/*
+            !_docs/documentation_guide.md
             !_docs/standards/templates/**/*
           config: .markdownlint.jsonc
 

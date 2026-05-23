@@ -1,5 +1,7 @@
 {
   "ignores": [
-    "_docs/archives/**"
+    "_docs/archives/**",
+    "_docs/standards/**",
+    "_docs/documentation_guide.md"
   ]
 }

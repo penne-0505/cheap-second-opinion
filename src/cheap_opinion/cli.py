@@ -51,6 +51,9 @@ class ModelConfig:
     temperature: float
     max_tokens: int
     timeout_seconds: int
+    reasoning_effort: str | None = None
+    reasoning_max_tokens: int | None = None
+    reasoning_exclude: bool = False
 
 
 def eprint(message: str) -> None:
@@ -95,6 +98,9 @@ def resolve_model(alias: str | None, models_file: Path) -> ModelConfig:
         temperature=float(entry.get("temperature", defaults.get("temperature", 0.1))),
         max_tokens=int(entry.get("max_tokens", defaults.get("max_tokens", 3000))),
         timeout_seconds=int(entry.get("timeout_seconds", defaults.get("timeout_seconds", 120))),
+        reasoning_effort=entry.get("reasoning_effort") or defaults.get("reasoning_effort"),
+        reasoning_max_tokens=entry.get("reasoning_max_tokens") or defaults.get("reasoning_max_tokens"),
+        reasoning_exclude=bool(entry.get("reasoning_exclude", defaults.get("reasoning_exclude", False))),
     )
 
 
@@ -197,12 +203,21 @@ def openrouter_chat(model: ModelConfig, messages: list[dict[str, str]]) -> dict[
         raise SystemExit("OPENROUTER_API_KEY is not set.")
 
     url = model.base_url.rstrip("/") + "/chat/completions"
-    payload = {
+    payload: dict[str, Any] = {
         "model": model.model,
         "messages": messages,
         "temperature": model.temperature,
         "max_tokens": model.max_tokens,
     }
+    if model.reasoning_effort or model.reasoning_max_tokens or model.reasoning_exclude:
+        reasoning: dict[str, Any] = {}
+        if model.reasoning_effort:
+            reasoning["effort"] = model.reasoning_effort
+        if model.reasoning_max_tokens:
+            reasoning["max_tokens"] = model.reasoning_max_tokens
+        if model.reasoning_exclude:
+            reasoning["exclude"] = True
+        payload["reasoning"] = reasoning
     req = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),

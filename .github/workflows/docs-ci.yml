@@ -9,25 +9,33 @@ on:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    env:
+      DD_SCOPE_BASE: ff0da513bc5d88d58aab62ea60a5b5a3fb6d08bc
+      DD_SCOPE_DIFF_FILTER: ACMR
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Markdownlint
         uses: DavidAnson/markdownlint-cli2-action@v16
         with:
           globs: |
             _docs/**/*.md
+            _evals/**/*.md
+            README.md
+            AGENTS.md
+            TODO.md
+            QUICKSTART.md
             !_docs/archives/**/*
-            !_docs/standards/**/*
-            !_docs/documentation_guide.md
             !_docs/standards/templates/**/*
           config: .markdownlint.jsonc
 
       - name: Setup Deno
-        uses: denoland/setup-deno@v1
+        uses: denoland/setup-deno@v2
         with:
-          deno-version: v1.x
+          deno-version: v2.x
 
-      - name: Validate frontmatter
-        run: deno run --allow-read scripts/validate-frontmatter.mjs
+      - name: Run documentation validators
+        run: ./scripts/check-docs.sh

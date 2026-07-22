@@ -1,214 +1,110 @@
 ---
 name: docs-prep
-description: Use after implementation-prep when the change is Size >= M or requires design decisions.
+description: Use after implementation-prep when the change is Size >= M, Risk >= Medium, or requires design decisions.
 ---
 
 # Documentation Preparation
 
-This skill focuses on creating documentation before large implementations, following the project's documentation protocol and lifecycle rules.
+This skill prepares canonical documentation before substantial implementation work.
 
 ## When to Use
 
-Use this skill for **large changes (Size >= M)** or when design decisions need to be recorded:
+Use this skill for:
 
-- New features requiring architecture decisions
+- `Size >= M`
+- `Risk >= Medium`
+- Architecture decisions
+- Intentional omissions that future maintainers could mistake for missing work
 - Breaking changes or migrations
-- Complex refactors affecting multiple components
-- Features requiring formal specification
+- Complex refactors
+- Agent workflow / validator / CI / Skill / documentation rule changes
 
-For small changes (Size < M), use **implementation-prep** alone and skip this skill.
+For `Size XS/S` and `Risk Low`, use `implementation-prep` alone unless a design decision or intentional omission risk must be recorded beyond TODO / PR / commit notes.
 
 ## Documentation Workflow
 
-### 1. Determine Documentation Scope
+### 1. Determine Scope
 
-Based on the implementation size and complexity:
+| Condition | Required Documents |
+| --- | --- |
+| `Size >= M` | Plan, Intent, QA test-plan |
+| `Risk >= Medium` | Intent, QA test-plan |
+| `Risk High / Critical` | Plan, Intent, QA test-plan, verification before completion |
+| Bug with regression risk | QA regression check or no-test rationale |
+| Refactor | behavior-preservation checks |
+| Intentional omission risk affecting future work | Intent, or Plan Non-Goals when a plan already exists |
+| Agent workflow / validator / CI / Skill change | agent misbehavior checks |
 
-| Change Type               | Required Documents                             |
-| ------------------------- | ---------------------------------------------- |
-| Large feature (Size >= M) | draft/ → plan/ → intent/ → guide/ + reference/ |
-| Breaking change           | plan/ + intent/ (migration guide)              |
-| Architecture decision     | intent/ (ADR-style)                            |
-| Research-heavy feature    | survey/ → plan/ → intent/                      |
+### 2. Create or Update Plan
 
-### 2. Create Draft Documentation
+Location: `_docs/plan/<Area>/<slug>/plan.md`
 
-**Location**: `_docs/draft/(feature-name)/`
+Plan documents should include:
 
-Create initial notes and hypotheses:
+- Overview
+- Scope
+- Non-Goals
+- Requirements
+- Tasks
+- QA Plan
+- Deployment / Rollout
 
-```markdown
----
-title: "Feature X Draft Notes"
-status: proposed
-draft_status: exploring
-created_at: YYYY-MM-DD
-updated_at: YYYY-MM-DD
-references: []
-related_issues: []
-related_prs: []
----
+Use root-relative references:
 
-## Hypothesis
-
-- What we're trying to solve
-- Expected outcomes
-
-## Options / Alternatives
-
-- Approach A: Pros/Cons
-- Approach B: Pros/Cons
-
-## Open Questions
-
-- Technical constraints to investigate
-- Design decisions pending
+```yaml
+references:
+  - "_docs/intent/Core/feature-x/decision.md"
+  - "_docs/qa/Core/feature-x/test-plan.md"
 ```
 
-**Key Points**:
+### 3. Create or Update Intent
 
-- Use `draft_status: exploring` while investigating
-- Update `updated_at` regularly (30-day stale limit)
-- Link to related TODO.md entries
+Location: `_docs/intent/<Area>/<slug>/decision.md`
 
-### 3. Elevate to Plan (if needed)
+Intent documents should include:
 
-**Location**: `_docs/plan/(feature-name)/plan.md`
+- `intent_schema: 2`
+- Context
+- Decisions with stable `DEC-001` style IDs
+- `What`, `Why`, and `Change freedom` for each decision
+- `Why not` and `Revisit when` only when they add real information
+- Consequences / Impact
+- Quality Implications
+- Intent-derived Invariants only when a condition must remain true across every valid implementation; `None` is normal
 
-When scope is clear, create formal plan:
+Intent documents are permanent rationale records. They constrain future work by
+the recorded why and required outcome, not by freezing the current mechanism.
+Do not archive intent documents.
 
-```markdown
----
-title: "Feature X Implementation Plan"
-status: proposed
-draft_status: n/a
-created_at: YYYY-MM-DD
-updated_at: YYYY-MM-DD
-references: ["../draft/feature-x/"]
-related_issues: []
-related_prs: []
----
+### 4. Create QA Test Plan
 
-## Overview
+When creating Plan / Intent for `Size >= M` or `Risk >= Medium`, also run `qa-prep` and create:
 
-Brief description of the feature.
-
-## Scope
-
-- Features to implement
-- Impact areas
-
-## Non-Goals
-
-- Out of scope items
-
-## Requirements
-
-- **Functional**: Feature requirements
-- **Non-Functional**: Performance, security, etc.
-
-## Tasks
-
-Implementation task breakdown.
-
-## Test Plan
-
-Testing strategy and verification points.
-
-## Deployment / Rollout
-
-Deployment procedures and rollback strategy.
+```text
+_docs/qa/<Area>/<slug>/test-plan.md
 ```
 
-**Key Points**:
+New QA documents use `qa_schema: 2`, review affected `DEC-*` entries, and may
+record `None` when the Intent defines no invariant.
 
-- Must include Scope, Non-Goals, Requirements
-- Define Test Plan and Rollback strategy
-- Link related issues/PRs in front-matter
-
-### 4. Create Intent (ADR-style)
-
-**Location**: `_docs/intent/(feature-name)/decision.md`
-
-Record design decisions and rationale:
-
-```markdown
----
-title: "Feature X Design Decision"
-status: active
-draft_status: n/a
-created_at: YYYY-MM-DD
-updated_at: YYYY-MM-DD
-references: ["../../plan/feature-x/plan.md"]
-related_issues: []
-related_prs: []
----
-
-## Context
-
-Background and problem statement.
-
-## Decision
-
-The chosen approach.
-
-## Consequences
-
-Impact of this decision.
-
-## Alternatives Considered
-
-Other options and why they were rejected.
-```
-
-**Key Points**:
-
-- Focus on "why" not "what"
-- Reference the plan document
-- Record trade-offs explicitly
-
-## Document Hierarchy Rules
-
-### Naming Convention
-
-Directory name `(対象)` must match TODO.md **Area** field:
-
-- If renaming directory, update TODO.md Area simultaneously
-- Use kebab-case for multi-word names
-
-### Status Transitions
-
-| From    | To        | Condition                            |
-| ------- | --------- | ------------------------------------ |
-| draft/  | plan/     | Scope and requirements are clear     |
-| plan/   | intent/   | Design decisions are finalized       |
-| intent/ | archives/ | Approved and implementation complete |
-| draft/  | survey/   | Research findings need formalization |
-| survey/ | plan/     | Research complete, ready to plan     |
-
-### Stale Management
-
-- Drafts: 30-day TTL from `updated_at`
-- Extensions: Add `stale_exempt_until`, `stale_exempt_reason`, `stale_extensions`
-- Never archive draft/plan/survey without intent approval
+Ensure QA references root-relative canonical paths.
 
 ## Integration with Implementation
 
-1. **Before coding**: Have draft/ or plan/ ready
-2. **During implementation**: Update documents as decisions change
-3. **After implementation**: Use **docs-cleanup** skill to finalize
+1. Before coding, confirm Plan / Intent / QA requirements.
+2. During implementation, update docs when decisions change.
+3. After implementation, run `post-implementation`; for substantial documented work, also run `docs-cleanup`.
 
 ## Deliverables
 
-Before starting implementation:
-
-- [ ] Draft notes in `_docs/draft/(feature)/` (exploring phase)
-- [ ] Plan document in `_docs/plan/(feature)/` (if Size >= M)
-- [ ] Intent document in `_docs/intent/(feature)/` (if design decisions needed)
-- [ ] All documents linked in TODO.md references
-- [ ] Front-matter complete with dates and relationships
+- Plan document when required.
+- Intent document when required.
+- QA test-plan when required.
+- TODO fields updated with canonical paths.
+- Front-matter complete with current dates.
 
 ## References
 
-- `_docs/standards/documentation_guidelines.md` - Full documentation guidelines
-- `_docs/standards/documentation_operations.md` - Operations and lifecycle rules
+- `_docs/standards/documentation_guidelines.md`
+- `_docs/standards/documentation_operations.md`
+- `_docs/standards/quality_assurance.md`

@@ -109,8 +109,20 @@ model = "qwen/qwen3-coder"
 
 全文コピーではなく、同じレビュー思想をこのPoC向けに短く実装しています。
 
-Source: https://github.com/openai/codex/blob/main/codex-rs/core/review_prompt.md
+Source: [OpenAI Codex review prompt](https://github.com/openai/codex/blob/main/codex-rs/core/review_prompt.md)
 
 ## Skill Wrapper
 
 Codex skill wrapperは `skills/cheap-second-opinion/SKILL.md` にあります。skill内の `scripts/cheap-opinion` が同梱CLIを起動します。
+
+## Development Workflow
+
+このリポジトリでは [`TODO.md`](TODO.md) を未完了タスクの source of truth とし、[`_docs/documentation_guide.md`](_docs/documentation_guide.md) と `_docs/standards/` のドキュメント駆動開発ルールを使います。中規模以上またはリスクのある変更では、Plan / Intent / QA test-plan / verification を対応付けます。
+
+ローカルのドキュメント検証は次で実行します。
+
+```bash
+./scripts/check-docs.sh
+```
+
+導入済み template revision は [`docs-template.lock.json`](docs-template.lock.json) に固定しています。後続 release を取り込む場合は、moving branch tip ではなく推奨 tag と full SHA を使い、同梱の `docs-template-migration` skill で project 固有の変更を保全します。

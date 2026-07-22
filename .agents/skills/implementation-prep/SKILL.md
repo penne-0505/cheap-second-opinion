@@ -5,45 +5,58 @@ description: Use before any implementation request that touches multiple files o
 
 # Implementation Preparation
 
-This skill focuses on the preparatory phase: collect every requirement detail, align it with the repository's documentation, and make the TODO list the single source of truth for the implementation plan before writing any code.
+This skill collects requirements, aligns them with repository documentation, and makes `TODO.md` the task source of truth before implementation begins.
 
 ## Preparation Flow
 
-1. **Clarify the request.** Repeat back what you heard, surface assumptions, and ask any follow-ups needed to make the scope airtight.
-2. **Document reconnaissance.** Hunt for relevant documentation (architecture notes, READMEs, design briefs, API docs, workflow guides) and log the sections that confirm behavior, constraints, or interfaces you will touch.
-3. **TODO.md audit.** Open the nearest TODO.md, read its outstanding tickets, and match them against the incoming request. Update it with the new task, references to the docs you read, and links to follow-up questions; if the repo lacks a TODO.md, create one at the project root and mention it in your summary.
-4. **Plan synthesis.** Translate everything into a plan that spells out (a) user-visible changes, (b) dependencies, (c) verification steps, and (d) open questions that still need answers.
-5. **Share the plan.** Present the doc/TODO references, the plan, and any blocking items back to the requester before touching the codebase.
+1. **Clarify the request.** Restate the goal, assumptions, and open questions.
+2. **Document reconnaissance.** Read the relevant README, standards, plans, intents, QA docs, and workflow guides before editing code.
+3. **TODO.md audit.** Confirm the task has `Size`, `Risk`, `Acceptance Criteria`, `Plan`, `Intent`, `QA`, and `Verification`.
+4. **Risk gate.** If `Size >= M` or `Risk >= Medium`, run `docs-prep` and `qa-prep` before implementation.
+5. **Plan synthesis.** Produce an implementation plan with user-visible changes, dependencies, verification steps, and unresolved questions.
+6. **Share the plan.** Present the relevant docs, TODO entry, QA expectations, and blockers before touching implementation files.
+
+## Before Implementation
+
+- If `Size >= M` or `Risk >= Medium`, run `qa-prep`.
+- Confirm Plan / Intent / QA exist.
+- Confirm Acceptance Criteria are clear and use `AC-001` style IDs.
+- Confirm the Test Matrix has at least one planned check for each core AC and each applicable INV.
+- For Bug tasks, confirm regression test or no-test rationale is planned.
+- For Refactor tasks, confirm behavior-preservation checks are planned.
+- For Agent workflow / validator / CI / Skill / documentation rule changes, confirm agent misbehavior checks are planned.
+- Plan to anchor non-obvious code to intent: where a deliberate decision (especially a why not or intentional omission) would read as missing or removable, leave a `// intent: DEC-00X (<Area>/<slug>) — <causal why>` comment. Use `// intent-invariant: INV-00X ...` only for a strict invariant. This is targeted, not blanket. See `quality_assurance.md` (intent ↔ code traceability).
 
 ## Document & TODO Strategy
 
-- Treat documentation as the contract. Highlight exact files/sections that describe the data flows, APIs, or UX patterns the change must respect and keep links handy for teammates.
-- Use TODO.md as a living checklist: note what you will do, why it matters, what passes for success, and when you expect to revisit each item. Prefer short, precise sentences (e.g., "Confirm auth flow described in docs/security.md before touching token refresh").
-- When multiple docs apply, build a mini "map" inside your plan that notes how they interplay (e.g., "Setup described in docs/ops/deploy.md; UI constraints in design/interaction.md; TODO entry references both so no one misses the coupling").
+- Treat documentation as the contract. Keep exact doc paths and sections handy.
+- Use `TODO.md` as a living checklist, not as a history log.
+- Use root-relative canonical paths for `Plan`, `Intent`, `QA`, and `Verification`.
+- Do not start implementation for `Size >= M` or `Risk >= Medium` while `Intent` or `QA` is missing.
 
 ## Deliverables Before Implementation
 
-- A written summary that links to the docs you read and the TODO.md entries you created/updated.
-- A structured task breakdown (e.g., sections for UI, backend, tests, docs) showing what you will work on, dependencies, and verification.
-- A list of clarifying questions that remain unanswered.
-- A TODO.md entry (or amendment) that the team can follow to see the plan’s status and the next steps.
+- Written summary of docs read and assumptions.
+- Updated or confirmed TODO entry.
+- Implementation plan tied to Acceptance Criteria.
+- QA prep status, including affected DEC review, planned AC checks, and any applicable INV checks.
+- Open questions or blockers.
 
-## When to Use
+## Tracks
 
-Apply this skill whenever you receive a new implementation request—feature, bug, refactor, or documentation change—that requires coordination, multiple files, or a clear record of what you learned before you code.
+### Fast Track
 
-### Fast Track (Lightweight)
+For `Size XS/S` and `Risk Low` tasks:
 
-For small changes (Size < M) with clear TODO.md Steps:
+- Use this skill alone.
+- Plan / Intent / QA can be `None`.
+- Before keeping them `None`, check intentional omission risk: if a future maintainer could mistake a deliberate limitation, unsupported path, or omission for missing work, record the reason in TODO Description, PR / commit notes, or escalate to docs-prep.
+- Record intent in TODO, PR, commit, or a lightweight follow-up if needed.
 
-- Use this skill alone
-- Document creation can be skipped
-- Record intent in commit messages or PR descriptions
+### Standard Track
 
-### Standard Track (Full Documentation)
+For `Size >= M`, `Risk >= Medium`, design-decision work, or intentional omission risk that affects future work:
 
-For large changes (Size >= M) or when design decisions are needed:
-
-- Use **docs-prep skill** in addition to this skill
-- Follow the full documentation workflow: draft → plan → intent
-- See `.codex/skills/docs-prep/SKILL.md` for details
+- Use `docs-prep`.
+- Use `qa-prep`.
+- Follow `plan -> intent -> qa/test-plan -> implementation -> qa/verification`.

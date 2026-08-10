@@ -134,7 +134,7 @@ find . -name "models.toml" -not -path './.venv/*' -not -path './.claude/*' -not 
 
 ## Follow-up TODOs
 
-- **Core-Enhance-5** (skill CLI reasoning_* back-port): Refactor-6 完了で自動解消 (skill cli.py が src と完全同一 + reasoning_* fields 保有)。AC-001/AC-002 満たされたため、TODO から削除する。
+- **Core-Enhance-5** (skill CLI `reasoning_*` back-port): Refactor-6 完了で自動解消 (skill cli.py が src と完全同一 + `reasoning_*` fields 保有)。AC-001/AC-002 満たされたため、TODO から削除する。
 - **Core-Enhance-8** (preset mechanism): Refactor-6 完了で hard dependency 解消、Ready phase へ移行可能。Phase 3 で実装。
 - **Core-Test-9** (配布形態 smoke test CI): Refactor-6 完了後着手。INV-002 の継続監視を担う。
 - **Docs-Doc-10** (SKILL.md ↔ CLI --help diff CI): Core-Enhance-8 完了後着手。

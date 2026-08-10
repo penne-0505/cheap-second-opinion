@@ -47,7 +47,7 @@ related_prs: []
 
 ### DEC-004: alias 参照はフル alias 名
 
-- **What**: preset の `models` list には models.toml の `[models.<alias>]` の <alias> をフルで書く (`"v4-flash-0731"` 等)。短縮 alias は導入しない。
+- **What**: preset の `models` list には models.toml の `[models.<alias>]` の `<alias>` をフルで書く (`"v4-flash-0731"` 等)。短縮 alias は導入しない。
 - **Why**: alias 名の一意性 = source of truth の一意性。preset 記述と alias 定義で名前が一致することで、grep / rename の一貫性が保たれる。
 - **Change freedom**: alias 名変更は preset の連動更新必須。behavior-preservation は Core-Refactor-6 の QA で担保。
 

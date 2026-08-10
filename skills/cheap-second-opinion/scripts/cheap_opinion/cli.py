@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import importlib.resources
 import json
 import os
 import subprocess
@@ -26,17 +27,28 @@ else:
 
 APP_STATE_DIRNAME = ".second-opinion-poc"
 
+# intent: DEC-010 (Core/preset-schema) — output schema version。
+# breaking change (field 削除・型変更) 時に bump。field 追加は non-breaking。
+SCHEMA_VERSION = 1
+
+# intent: DEC-011 (Core/preset-schema) — models.toml で認識する top-level table。
+# それ以外は default で stderr warning、CHEAP_OPINION_STRICT_CONFIG=1 で startup error。
+KNOWN_TOP_LEVEL_FIELDS = {"defaults", "models", "presets", "archived_models"}
+
+# intent: DEC-007 (Core/preset-schema) — OpenRouter 想定値。
+# 未知値は pass-through + warning (OpenRouter に判断委譲)。strict 時は error。
+KNOWN_REASONING_EFFORTS = {"low", "medium", "high", "xhigh", "max", "minimal", "none"}
+
 
 def default_models_file() -> Path:
-    script_path = Path(__file__).resolve()
-    candidates = [
-        script_path.parents[2] / "models.toml",
-        script_path.parent / "models.toml",
-    ]
-    for path in candidates:
-        if path.exists():
-            return path
-    return candidates[0]
+    # intent: DEC-002 (Core/cli-unification) — models.toml は default + override 意味論。
+    # env var (CHEAP_OPINION_MODELS_TOML) は argparse 層で拾う。
+    # ここでは project root cwd override → package default の順で解決する。
+    project_root_toml = Path.cwd() / "models.toml"
+    if project_root_toml.exists():
+        return project_root_toml
+    ref = importlib.resources.files("cheap_opinion") / "models.toml"
+    return Path(str(ref))
 
 
 DEFAULT_MODELS_FILE = default_models_file()
@@ -51,6 +63,9 @@ class ModelConfig:
     temperature: float
     max_tokens: int
     timeout_seconds: int
+    reasoning_effort: str | None = None
+    reasoning_max_tokens: int | None = None
+    reasoning_exclude: bool = False
 
 
 def eprint(message: str) -> None:
@@ -64,29 +79,71 @@ def load_toml(path: Path) -> dict[str, Any]:
         return tomllib.load(f)
 
 
+def _strict_config() -> bool:
+    return os.environ.get("CHEAP_OPINION_STRICT_CONFIG") == "1"
+
+
+def _warn_unknown_fields(data: dict[str, Any], path: Path) -> None:
+    # intent: DEC-011 (Core/preset-schema) — silent ignore が真犯人。
+    # default で warning、CHEAP_OPINION_STRICT_CONFIG=1 で error 昇格。
+    unknown = sorted(set(data.keys()) - KNOWN_TOP_LEVEL_FIELDS)
+    if not unknown:
+        return
+    msg = f"models.toml: unknown top-level field(s) {unknown} in {path}"
+    if _strict_config():
+        raise SystemExit(msg + " (CHEAP_OPINION_STRICT_CONFIG=1 rejected)")
+    eprint(f"warning: {msg}")
+
+
 def load_models(path: Path) -> dict[str, Any]:
     if not path.exists():
         raise SystemExit(f"models file not found: {path}")
     data = load_toml(path)
     if "models" not in data:
         raise SystemExit(f"models file has no [models.*] entries: {path}")
+    _warn_unknown_fields(data, path)
     return data
 
 
-def resolve_model(alias: str | None, models_file: Path) -> ModelConfig:
+def resolve_model(
+    alias: str | None,
+    models_file: Path,
+    reasoning_effort_override: str | None = None,
+) -> ModelConfig:
     data = load_models(models_file)
     defaults = data.get("defaults", {})
     models = data.get("models", {})
     selected_alias = alias or defaults.get("model")
     if not selected_alias:
         raise SystemExit("No model alias was supplied and [defaults].model is missing.")
-    if selected_alias not in models:
+    if selected_alias in models:
+        entry = models[selected_alias]
+    elif "/" in selected_alias:
+        entry = {"provider": "openrouter", "model": selected_alias}
+    else:
         known = ", ".join(sorted(models))
-        raise SystemExit(f"Unknown model alias '{selected_alias}'. Known aliases: {known}")
-    entry = models[selected_alias]
+        raise SystemExit(
+            f"Unknown model alias '{selected_alias}'. Known aliases: {known}. "
+            "Full OpenRouter IDs (containing '/') are also accepted."
+        )
     provider = str(entry.get("provider", "openrouter"))
     if provider != "openrouter":
         raise SystemExit(f"Only provider='openrouter' is supported in this PoC: {selected_alias}")
+    # intent: DEC-007 (Core/preset-schema) — CLI override > alias > defaults。
+    # 未知値は pass-through + warning、strict 時 error。
+    effort = (
+        reasoning_effort_override
+        or entry.get("reasoning_effort")
+        or defaults.get("reasoning_effort")
+    )
+    if effort and effort not in KNOWN_REASONING_EFFORTS:
+        msg = (
+            f"unknown reasoning_effort '{effort}' "
+            f"(known: {sorted(KNOWN_REASONING_EFFORTS)}); passing through to OpenRouter"
+        )
+        if _strict_config():
+            raise SystemExit(msg + " (CHEAP_OPINION_STRICT_CONFIG=1 rejected)")
+        eprint(f"warning: {msg}")
     return ModelConfig(
         alias=selected_alias,
         provider=provider,
@@ -95,7 +152,24 @@ def resolve_model(alias: str | None, models_file: Path) -> ModelConfig:
         temperature=float(entry.get("temperature", defaults.get("temperature", 0.1))),
         max_tokens=int(entry.get("max_tokens", defaults.get("max_tokens", 3000))),
         timeout_seconds=int(entry.get("timeout_seconds", defaults.get("timeout_seconds", 120))),
+        reasoning_effort=effort,
+        reasoning_max_tokens=entry.get("reasoning_max_tokens") or defaults.get("reasoning_max_tokens"),
+        reasoning_exclude=bool(entry.get("reasoning_exclude", defaults.get("reasoning_exclude", False))),
     )
+
+
+def resolve_preset(name: str, models_file: Path) -> tuple[list[str], str]:
+    """Resolve preset name to (aliases, description)."""
+    data = load_models(models_file)
+    presets = data.get("presets", {})
+    if name not in presets:
+        known = ", ".join(sorted(presets)) or "(none)"
+        raise SystemExit(f"Unknown preset '{name}'. Known presets: {known}")
+    entry = presets[name]
+    aliases = list(entry.get("models") or [])
+    if not aliases:
+        raise SystemExit(f"Preset '{name}' has no models")
+    return aliases, str(entry.get("description", ""))
 
 
 def state_dir_from_arg(value: str) -> Path:
@@ -141,7 +215,8 @@ def write_log(state_dir: Path, record: dict[str, Any]) -> Path | None:
     logs_dir = state_dir / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%dT%H%M%S", time.localtime())
-    path = logs_dir / f"{stamp}-{record.get('command', 'run')}-{record.get('model_alias', 'model')}.json"
+    safe_alias = str(record.get("model_alias", "model")).replace("/", "_")
+    path = logs_dir / f"{stamp}-{record.get('command', 'run')}-{safe_alias}.json"
     path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return path
 
@@ -191,18 +266,40 @@ def enforce_limit(label: str, text: str, max_chars: int) -> None:
         )
 
 
+def _extract_cost_usd(usage: dict[str, Any]) -> float | None:
+    """Extract cost from OpenRouter usage. API version 差異を吸収。"""
+    for key in ("cost_usd", "total_cost", "cost"):
+        v = usage.get(key)
+        if v is None:
+            continue
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            pass
+    return None
+
+
 def openrouter_chat(model: ModelConfig, messages: list[dict[str, str]]) -> dict[str, Any]:
     api_key = os.environ.get("OPENROUTER_API_KEY")
     if not api_key:
         raise SystemExit("OPENROUTER_API_KEY is not set.")
 
     url = model.base_url.rstrip("/") + "/chat/completions"
-    payload = {
+    payload: dict[str, Any] = {
         "model": model.model,
         "messages": messages,
         "temperature": model.temperature,
         "max_tokens": model.max_tokens,
     }
+    if model.reasoning_effort or model.reasoning_max_tokens or model.reasoning_exclude:
+        reasoning: dict[str, Any] = {}
+        if model.reasoning_effort:
+            reasoning["effort"] = model.reasoning_effort
+        if model.reasoning_max_tokens:
+            reasoning["max_tokens"] = model.reasoning_max_tokens
+        if model.reasoning_exclude:
+            reasoning["exclude"] = True
+        payload["reasoning"] = reasoning
     req = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
@@ -301,6 +398,25 @@ def print_models(models_file: Path) -> int:
     return 0
 
 
+def print_presets(models_file: Path) -> int:
+    """List configured preset roster (name, description, contained aliases)."""
+    data = load_models(models_file)
+    presets = data.get("presets", {})
+    if not presets:
+        print("No presets defined.")
+        return 0
+    default_preset = data.get("defaults", {}).get("preset")
+    for name in sorted(presets):
+        entry = presets[name]
+        marker = " (default)" if name == default_preset else ""
+        description = str(entry.get("description", ""))
+        aliases = list(entry.get("models") or [])
+        print(f"{name}{marker}: {description}")
+        for alias in aliases:
+            print(f"  - {alias}")
+    return 0
+
+
 def split_model_aliases(value: str) -> list[str]:
     aliases = [item.strip() for item in value.split(",") if item.strip()]
     if not aliases:
@@ -314,8 +430,39 @@ def split_model_aliases(value: str) -> list[str]:
     return unique
 
 
-def resolve_many_models(value: str, models_file: Path) -> list[ModelConfig]:
-    return [resolve_model(alias, models_file) for alias in split_model_aliases(value)]
+def resolve_many_models(
+    aliases: list[str],
+    models_file: Path,
+    reasoning_effort_override: str | None = None,
+) -> list[ModelConfig]:
+    return [
+        resolve_model(alias, models_file, reasoning_effort_override) for alias in aliases
+    ]
+
+
+def _resolve_multi_aliases(
+    args: argparse.Namespace, models_file: Path
+) -> tuple[list[str], str | None, str | None]:
+    """Determine (aliases, preset_name, preset_description) for a multi run.
+
+    intent: DEC-005 (Core/preset-schema) — mutex handled by argparse group.
+    intent: DEC-008 (Core/preset-schema) — bare multi は [defaults].preset を暗黙適用。
+    """
+    preset = getattr(args, "preset", None)
+    models = getattr(args, "models", None)
+    if preset:
+        aliases, description = resolve_preset(preset, models_file)
+        return aliases, preset, description
+    if models:
+        return split_model_aliases(models), None, None
+    data = load_models(models_file)
+    default_preset = data.get("defaults", {}).get("preset")
+    if not default_preset:
+        raise SystemExit(
+            "multi requires --preset or --models, and [defaults].preset is not set"
+        )
+    aliases, description = resolve_preset(default_preset, models_file)
+    return aliases, default_preset, description
 
 
 def get_review_context(args: argparse.Namespace) -> tuple[Path, str]:
@@ -394,7 +541,9 @@ def run_one_model(
     run: dict[str, Any] = {
         "alias": model.alias,
         "model": model.model,
+        "effective_effort": model.reasoning_effort,
         "status": "ok",
+        "usage": None,
         "elapsed_seconds": 0.0,
     }
     try:
@@ -402,6 +551,13 @@ def run_one_model(
         text = response_text(response)
         run["raw_text"] = text
         run["response"] = response
+        usage = response.get("usage")
+        if isinstance(usage, dict):
+            run["usage"] = {
+                "prompt_tokens": usage.get("prompt_tokens"),
+                "completion_tokens": usage.get("completion_tokens"),
+                "cost_usd": _extract_cost_usd(usage),
+            }
         if parse_json:
             parsed = parse_json_object(text)
             run["parsed"] = parsed is not None
@@ -446,7 +602,13 @@ def run_many_models(
     return [runs_by_alias[model.alias] for model in model_configs]
 
 
-def summarize_runs(command: str, runs: list[dict[str, Any]], started: float) -> dict[str, Any]:
+def summarize_runs(
+    command: str,
+    runs: list[dict[str, Any]],
+    started: float,
+    preset_name: str | None = None,
+    preset_description: str | None = None,
+) -> dict[str, Any]:
     succeeded = [run["alias"] for run in runs if run.get("status") == "ok"]
     failed = [run["alias"] for run in runs if run.get("status") != "ok"]
     parse_failures = [
@@ -460,12 +622,22 @@ def summarize_runs(command: str, runs: list[dict[str, Any]], started: float) -> 
             result = run.get("result")
             if isinstance(result, dict):
                 total_findings += len(result.get("findings") or [])
+    total_cost_usd: float | None = None
+    for run in runs:
+        usage = run.get("usage")
+        if isinstance(usage, dict):
+            cost = usage.get("cost_usd")
+            if cost is not None:
+                total_cost_usd = (total_cost_usd or 0.0) + float(cost)
     return {
+        "preset": preset_name,
+        "preset_description": preset_description,
         "models": [run["alias"] for run in runs],
         "succeeded": succeeded,
         "failed": failed,
         "parse_failures": parse_failures,
         "total_findings": total_findings if command == "review" else None,
+        "total_cost_usd": total_cost_usd,
         "elapsed_seconds": round(time.monotonic() - started, 3),
     }
 
@@ -474,13 +646,19 @@ def render_multi_review_markdown(result: dict[str, Any]) -> str:
     summary = result["summary"]
     lines = [
         "Multi Review Summary",
+    ]
+    if summary.get("preset"):
+        lines.append(f"- preset: {summary['preset']}")
+    lines.extend([
         f"- models: {', '.join(summary['models'])}",
         f"- succeeded: {', '.join(summary['succeeded']) or 'none'}",
         f"- failed: {', '.join(summary['failed']) or 'none'}",
         f"- parse failures: {', '.join(summary['parse_failures']) or 'none'}",
         f"- total findings: {summary['total_findings']}",
-        "",
-    ]
+    ])
+    if summary.get("total_cost_usd") is not None:
+        lines.append(f"- total cost (USD): {summary['total_cost_usd']:.6f}")
+    lines.append("")
     for run in result["runs"]:
         lines.append(f"## {run['alias']} ({run['status']})")
         if run.get("status") != "ok":
@@ -498,11 +676,17 @@ def render_multi_ask_markdown(result: dict[str, Any]) -> str:
     summary = result["summary"]
     lines = [
         "Multi Ask Summary",
+    ]
+    if summary.get("preset"):
+        lines.append(f"- preset: {summary['preset']}")
+    lines.extend([
         f"- models: {', '.join(summary['models'])}",
         f"- succeeded: {', '.join(summary['succeeded']) or 'none'}",
         f"- failed: {', '.join(summary['failed']) or 'none'}",
-        "",
-    ]
+    ])
+    if summary.get("total_cost_usd") is not None:
+        lines.append(f"- total cost (USD): {summary['total_cost_usd']:.6f}")
+    lines.append("")
     for run in result["runs"]:
         lines.append(f"## {run['alias']} ({run['status']})")
         if run.get("status") != "ok":
@@ -526,7 +710,8 @@ def render_multi_raw(result: dict[str, Any]) -> str:
 
 
 def command_review(args: argparse.Namespace) -> int:
-    model = resolve_model(args.model, args.models_file)
+    reasoning_override = getattr(args, "reasoning_effort", None)
+    model = resolve_model(args.model, args.models_file, reasoning_override)
     messages = build_review_messages(args, model)
     if args.dry_run:
         print(json.dumps({"model": model.model, "messages": messages}, ensure_ascii=False, indent=2))
@@ -564,7 +749,9 @@ def command_review(args: argparse.Namespace) -> int:
 
 
 def command_multi_review(args: argparse.Namespace) -> int:
-    model_configs = resolve_many_models(args.models, args.models_file)
+    reasoning_override = getattr(args, "reasoning_effort", None)
+    aliases, preset_name, preset_description = _resolve_multi_aliases(args, args.models_file)
+    model_configs = resolve_many_models(aliases, args.models_file, reasoning_override)
     root, diff = get_review_context(args)
     messages_by_alias = {
         model.alias: build_review_messages_from_context(root, diff, args.max_findings, model)
@@ -572,8 +759,10 @@ def command_multi_review(args: argparse.Namespace) -> int:
     }
     if args.dry_run:
         payload = {
+            "schema_version": SCHEMA_VERSION,
             "mode": "multi",
             "command": "review",
+            "preset": preset_name,
             "models": [model.model for model in model_configs],
             "requests": [
                 {"alias": model.alias, "model": model.model, "messages": messages_by_alias[model.alias]}
@@ -586,9 +775,10 @@ def command_multi_review(args: argparse.Namespace) -> int:
     started = time.monotonic()
     runs = run_many_models("review", model_configs, messages_by_alias, True, args.concurrency)
     result = {
+        "schema_version": SCHEMA_VERSION,
         "mode": "multi",
         "command": "review",
-        "summary": summarize_runs("review", runs, started),
+        "summary": summarize_runs("review", runs, started, preset_name, preset_description),
         "runs": runs,
     }
     log_path = write_log(
@@ -614,7 +804,8 @@ def command_multi_review(args: argparse.Namespace) -> int:
 
 
 def command_ask(args: argparse.Namespace) -> int:
-    model = resolve_model(args.model, args.models_file)
+    reasoning_override = getattr(args, "reasoning_effort", None)
+    model = resolve_model(args.model, args.models_file, reasoning_override)
     messages = build_ask_messages(args)
     if args.dry_run:
         print(json.dumps({"model": model.model, "messages": messages}, ensure_ascii=False, indent=2))
@@ -639,13 +830,17 @@ def command_ask(args: argparse.Namespace) -> int:
 
 
 def command_multi_ask(args: argparse.Namespace) -> int:
-    model_configs = resolve_many_models(args.models, args.models_file)
+    reasoning_override = getattr(args, "reasoning_effort", None)
+    aliases, preset_name, preset_description = _resolve_multi_aliases(args, args.models_file)
+    model_configs = resolve_many_models(aliases, args.models_file, reasoning_override)
     messages = build_ask_messages(args)
     messages_by_alias = {model.alias: messages for model in model_configs}
     if args.dry_run:
         payload = {
+            "schema_version": SCHEMA_VERSION,
             "mode": "multi",
             "command": "ask",
+            "preset": preset_name,
             "models": [model.model for model in model_configs],
             "requests": [
                 {"alias": model.alias, "model": model.model, "messages": messages_by_alias[model.alias]}
@@ -658,9 +853,10 @@ def command_multi_ask(args: argparse.Namespace) -> int:
     started = time.monotonic()
     runs = run_many_models("ask", model_configs, messages_by_alias, False, args.concurrency)
     result = {
+        "schema_version": SCHEMA_VERSION,
         "mode": "multi",
         "command": "ask",
-        "summary": summarize_runs("ask", runs, started),
+        "summary": summarize_runs("ask", runs, started, preset_name, preset_description),
         "runs": runs,
     }
     log_path = write_log(
@@ -715,11 +911,21 @@ def build_parser() -> argparse.ArgumentParser:
             ".second-opinion-poc directory."
         ),
     )
+    parser.add_argument(
+        "--reasoning-effort",
+        default=None,
+        help=(
+            "Override reasoning_effort for this run (pass-through to OpenRouter). "
+            "Known values: low, medium, high, xhigh, max, minimal, none. "
+            "Unknown values pass through with a warning; "
+            "CHEAP_OPINION_STRICT_CONFIG=1 rejects them at startup."
+        ),
+    )
 
     sub = parser.add_subparsers(dest="command", required=True)
 
     review = sub.add_parser("review", help="Review the current git diff.")
-    review.add_argument("--model", help="Model alias from models.toml.")
+    review.add_argument("--model", help="Model alias from models.toml, or a full OpenRouter model ID (contains '/').")
     review.add_argument("--repo", default=".", help="Repository path for git diff.")
     review.add_argument("--staged", action="store_true", help="Review staged changes via git diff --cached.")
     review.add_argument("--diff-file", help="Read a diff from a file instead of running git diff.")
@@ -730,7 +936,7 @@ def build_parser() -> argparse.ArgumentParser:
     review.set_defaults(func=command_review)
 
     ask = sub.add_parser("ask", help="Ask for an open-ended second opinion.")
-    ask.add_argument("--model", help="Model alias from models.toml.")
+    ask.add_argument("--model", help="Model alias from models.toml, or a full OpenRouter model ID (contains '/').")
     ask.add_argument("--file", action="append", default=[], help="Include a file as context. Repeatable.")
     ask.add_argument("--stdin", action="store_true", help="Include stdin as additional context.")
     ask.add_argument("--template", choices=sorted(ASK_TEMPLATES), default="general")
@@ -744,7 +950,15 @@ def build_parser() -> argparse.ArgumentParser:
     multi_sub = multi.add_subparsers(dest="multi_command", required=True)
 
     multi_review = multi_sub.add_parser("review", help="Review the current git diff with multiple models.")
-    multi_review.add_argument("--models", required=True, help="Comma-separated model aliases from models.toml.")
+    mr_group = multi_review.add_mutually_exclusive_group(required=False)
+    mr_group.add_argument(
+        "--preset",
+        help="Preset name from models.toml [presets.*]. Mutually exclusive with --models.",
+    )
+    mr_group.add_argument(
+        "--models",
+        help="Comma-separated model aliases (full OpenRouter IDs also accepted). Mutually exclusive with --preset.",
+    )
     multi_review.add_argument("--repo", default=".", help="Repository path for git diff.")
     multi_review.add_argument("--staged", action="store_true", help="Review staged changes via git diff --cached.")
     multi_review.add_argument("--diff-file", help="Read a diff from a file instead of running git diff.")
@@ -756,7 +970,15 @@ def build_parser() -> argparse.ArgumentParser:
     multi_review.set_defaults(func=command_multi_review)
 
     multi_ask = multi_sub.add_parser("ask", help="Ask multiple models for a targeted second opinion.")
-    multi_ask.add_argument("--models", required=True, help="Comma-separated model aliases from models.toml.")
+    ma_group = multi_ask.add_mutually_exclusive_group(required=False)
+    ma_group.add_argument(
+        "--preset",
+        help="Preset name from models.toml [presets.*]. Mutually exclusive with --models.",
+    )
+    ma_group.add_argument(
+        "--models",
+        help="Comma-separated model aliases (full OpenRouter IDs also accepted). Mutually exclusive with --preset.",
+    )
     multi_ask.add_argument("--file", action="append", default=[], help="Include a file as context. Repeatable.")
     multi_ask.add_argument("--stdin", action="store_true", help="Include stdin as additional context.")
     multi_ask.add_argument("--template", choices=sorted(ASK_TEMPLATES), default="general")
@@ -775,6 +997,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     models_parser = sub.add_parser("models", help="List configured model aliases.")
     models_parser.set_defaults(func=lambda args: print_models(args.models_file))
+
+    presets_parser = sub.add_parser("presets", help="List configured preset roster and their models.")
+    presets_parser.set_defaults(func=lambda args: print_presets(args.models_file))
 
     return parser
 

@@ -1,0 +1,68 @@
+# cheap-second-opinion models & preset registry.
+#
+# alias 命名 rule (intent: DEC-010 (Core/preset-model-selection)):
+#   <series>-<version>[-<variant>]  (deepseek は vendor 抜きの例外: v~ 系識別で曖昧なし)
+# alias 追加基準: preset 採用モデルのみ登録。単発需要は full-ID passthrough
+#   (`--model provider/name`) で対応する。
+#
+# models.toml 探索順 (intent: DEC-002 (Core/cli-unification), DEC-011 (Core/preset-schema)):
+#   env var CHEAP_OPINION_MODELS_TOML → project root ./models.toml → package default (本ファイル)
+#
+# 未知 top-level field (intent: DEC-011 (Core/preset-schema)):
+#   default = stderr warning、CHEAP_OPINION_STRICT_CONFIG=1 で startup error に昇格。
+#
+# last_reviewed (intent: DEC-012 (Core/preset-schema)):
+#   モデル陳腐化の見直し起点。maintainer が「向上を体感した」タイミングで
+#   本ファイルを update する。定期見直し trigger は設けない。
+
+[defaults]
+model = "v4-flash-0731"
+preset = "master"
+base_url = "https://openrouter.ai/api/v1"
+temperature = 0.1
+max_tokens = 3000
+timeout_seconds = 180
+reasoning_effort = "high"
+last_reviewed = "2026-08-10"
+
+[models."v4-flash-0731"]
+provider = "openrouter"
+model = "deepseek/deepseek-v4-flash-0731"
+description = "堅実枠 / 既定。Opus 4.8 に肉薄する汎用推論・コード評価。"
+
+[models."gpt-5.6-luna"]
+provider = "openrouter"
+model = "openai/gpt-5.6-luna"
+description = "多角セカンドオピニオンの OpenAI ラボ枠。速度と priority 判定が鋭い。"
+
+[models.kimi-k3]
+provider = "openrouter"
+model = "moonshotai/kimi-k3"
+description = "長文脈・エージェンティックコーディング寄り (2.8T MoE, 1M ctx)。design ability A+ tier。"
+
+[models."glm-5.2"]
+provider = "openrouter"
+model = "z-ai/glm-5.2"
+description = "コーディング特化 + web design ability A tier。design preset の安価枠。"
+
+[models."qwen3.8-max"]
+provider = "openrouter"
+model = "qwen/qwen3.8-max"
+description = "発想寄り + web design ability A tier。design preset の flagship。"
+
+[presets.master]
+models = ["v4-flash-0731", "gpt-5.6-luna", "kimi-k3"]
+description = "セカンドオピニオンが必要なとき、迷ったらこれ。"
+
+[presets.cheap]
+models = ["v4-flash-0731", "gpt-5.6-luna"]
+description = "安く広く多発で意見が欲しいとき。探索や発想。"
+
+[presets.design]
+models = ["kimi-k3", "glm-5.2", "qwen3.8-max"]
+description = "web / UI デザインの taste 判断が必要なとき。"
+
+# intent: DEC-013 (Core/preset-schema) — archive セクション declared で schema 明示。
+# preset から外れた alias を [archived_models.<alias>] に移送する。恒久削除しない。
+# 現時点で archive 対象なし。
+[archived_models]

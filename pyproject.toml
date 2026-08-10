@@ -13,7 +13,9 @@ dependencies = []
 cheap-opinion = "cheap_opinion.cli:main"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+# intent: DEC-001 (Core/cli-unification) — skill dir 側を single source-of-truth に。
+# src/ 削除後は skills/cheap-second-opinion/scripts/ 配下の cheap_opinion package が唯一の実体。
+where = ["skills/cheap-second-opinion/scripts"]
 
 [tool.setuptools.package-data]
 cheap_opinion = ["models.toml"]

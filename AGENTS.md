@@ -18,4 +18,4 @@
 ## プロジェクト固有の境界
 
 - プロジェクトの CLI と skill は外部モデルを read-only の意見取得に限定し、外部モデルにファイル編集や最終判断を委ねない。
-- 変更後は `PYTHONPATH=src python -m compileall -q src`、`PYTHONPATH=src python -m cheap_opinion --help`、`PYTHONPATH=src python -m cheap_opinion models` と skill 同梱 CLI の `models` を確認する。
+- 変更後は `PYTHONPATH=skills/cheap-second-opinion/scripts python -m compileall -q skills/cheap-second-opinion/scripts`、`PYTHONPATH=skills/cheap-second-opinion/scripts python -m cheap_opinion --help`、`PYTHONPATH=skills/cheap-second-opinion/scripts python -m cheap_opinion models` と skill 同梱 CLI の `models` を確認する (Core-Refactor-6 で src/ を skill dir 側に一本化済)。

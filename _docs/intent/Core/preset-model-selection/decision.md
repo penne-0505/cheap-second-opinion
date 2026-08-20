@@ -4,11 +4,13 @@ status: active
 draft_status: n/a
 intent_schema: 2
 created_at: 2026-08-10
-updated_at: 2026-08-10
+updated_at: 2026-08-20
 references:
   - "_docs/intent/Core/preset-schema/decision.md"
   - "_docs/plan/Core/preset-mechanism/plan.md"
   - "_docs/qa/Core/preset-mechanism/test-plan.md"
+  - "_docs/qa/Core/glm-5-3-refresh/test-plan.md"
+  - "https://z.ai/blog/glm-5.3"
   - "AGENTS.md"
 related_issues: []
 related_prs: []
@@ -44,11 +46,11 @@ cheap-second-opinion は primary agent (Claude Code / Codex) が実装や設計�
 
 ### DEC-003: `design` preset の構成
 
-- **What**: `design = [kimi-k3 (high), glm-5.2 (high), qwen3.8-max (high)]`。
-- **Why**: web / UI design taste 要求時の preset。3 モデルとも maintainer 実測 (Breakout game generation) の design ability tier で上位グループ (K3=A+, GLM-5.2=A, Qwen3.8-Max=A)。3 モデルとも CN lab (Moonshot / Z-ai / Alibaba) だが、design ability 純度を lab diversity より優先する意図的判断。
+- **What**: `design = [kimi-k3 (high), glm-5.3 (high), qwen3.8-max (high)]`。
+- **Why**: web / UI design taste 要求時の preset。Kimi K3 / GLM-5.2 / Qwen3.8-Max は maintainer 実測 (Breakout game generation) で上位グループだった。GLM-5.3 は GLM-5.2 と同じ base model に追加 post-training を施した公式後継で、Z.ai が coding と long-horizon task の改善を報告し、OpenRouter も `z-ai/glm-5.3` を提供したため、Z.ai 枠を旧世代に固定せず後継へ更新する。3 モデルとも CN lab (Moonshot / Z-ai / Alibaba) だが、design ability 純度を lab diversity より優先する意図的判断は維持する。
 - **Change freedom**: モデル差替は上位 tier 内で自由。並列 wall (~84s、qwen 律速) は use case (design は 1 発本気、iteration しない) から許容範囲。
 - **Why not**: v4flash (DEC-004)、grok (DEC-005)、gemini (DEC-006) の除外 rationale を各 DEC 参照。
-- **Revisit when**: design ability tier に新モデルが加わり実測で上位相当と確認できた時点、または現 3 モデルのいずれかが陳腐化した時点。
+- **Revisit when**: GLM-5.3 の web design 実測が GLM-5.2 より明確に後退した時点、design ability tier に新モデルが加わり上位相当と確認できた時点、または現 3 モデルのいずれかが陳腐化した時点。
 
 ### DEC-004: `v4-flash-0731` を design preset に含めない
 
@@ -123,6 +125,6 @@ None
 
 ## Rollback / Follow-ups
 
-- preset 見直し trigger: DEC-012 の `last_reviewed` を起点、maintainer が「モデル向上を体感した」タイミング。
+- preset 見直し trigger: DEC-012 の `last_reviewed` を起点、maintainer が「モデル向上を体感した」タイミング。GLM-5.3 は web design の独立再計測前なので、実運用で GLM-5.2 からの後退が見えた場合も再検討する。
 - 除外モデル (grok / gemini / muse-spark) は各 DEC の `Revisit when` を trigger として再検討可能。
 - alias 命名 rule (DEC-010) の変更は 5 alias 全ての整形を伴うため、変更時は breaking change として beta 段階で明示する。

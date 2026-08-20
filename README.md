@@ -90,7 +90,7 @@ export OPENROUTER_API_KEY="..."
 |---|---|---|
 | **master** (default) | セカンドオピニオンが必要なとき、迷ったらこれ | v4-flash-0731 / gpt-5.6-luna / kimi-k3 |
 | **cheap** | 安く広く多発で意見が欲しいとき。探索や発想 | v4-flash-0731 / gpt-5.6-luna |
-| **design** | web / UI デザインの taste 判断が必要なとき | kimi-k3 / glm-5.2 / qwen3.8-max |
+| **design** | web / UI デザインの taste 判断が必要なとき | kimi-k3 / glm-5.3 / qwen3.8-max |
 
 `--preset` と `--models` は mutually exclusive です。
 

@@ -23,7 +23,7 @@ temperature = 0.1
 max_tokens = 3000
 timeout_seconds = 180
 reasoning_effort = "high"
-last_reviewed = "2026-08-10"
+last_reviewed = "2026-08-20"
 
 [models."v4-flash-0731"]
 provider = "openrouter"
@@ -40,10 +40,10 @@ provider = "openrouter"
 model = "moonshotai/kimi-k3"
 description = "長文脈・エージェンティックコーディング寄り (2.8T MoE, 1M ctx)。design ability A+ tier。"
 
-[models."glm-5.2"]
+[models."glm-5.3"]
 provider = "openrouter"
-model = "z-ai/glm-5.2"
-description = "コーディング特化 + web design ability A tier。design preset の安価枠。"
+model = "z-ai/glm-5.3"
+description = "GLM-5.2 と同じ base model を追加 post-training した公式後継。design preset の Z.ai 枠。"
 
 [models."qwen3.8-max"]
 provider = "openrouter"
@@ -59,7 +59,7 @@ models = ["v4-flash-0731", "gpt-5.6-luna"]
 description = "安く広く多発で意見が欲しいとき。探索や発想。"
 
 [presets.design]
-models = ["kimi-k3", "glm-5.2", "qwen3.8-max"]
+models = ["kimi-k3", "glm-5.3", "qwen3.8-max"]
 description = "web / UI デザインの taste 判断が必要なとき。"
 
 # intent: DEC-013 (Core/preset-schema) — archive セクション declared で schema 明示。
